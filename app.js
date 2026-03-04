@@ -1,4 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
+    const FRONTEND_GEMINI_API_KEY = 'AIzaSyB1OWwuWFtxnQ-Cpv2nZxoWWsX3137tDE8';
     const compareBtn = document.getElementById('compare-btn');
     const word1Input = document.getElementById('word1');
     const word2Input = document.getElementById('word2');
@@ -18,7 +19,7 @@ document.addEventListener('DOMContentLoaded', () => {
     compareBtn.addEventListener('click', async () => {
         const word1 = word1Input.value.trim();
         const word2 = word2Input.value.trim();
-        const apiKey = String(window.APP_CONFIG?.GEMINI_API_KEY || '').trim();
+        const apiKey = FRONTEND_GEMINI_API_KEY.trim();
 
         if (!word1 || !word2) {
             showError('Please enter two words, concepts, or items to compare.');
@@ -31,7 +32,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         if (!apiKey) {
-            showError('Missing Gemini API key. Add GEMINI_API_KEY in .env and run `node generate-config.js`.');
+            showError('Missing Gemini API key. Add it to FRONTEND_GEMINI_API_KEY in app.js.');
             return;
         }
         hideError();
