@@ -1,0 +1,5 @@
+.env
+node_modules
+anaconda
+package-lock.json
+package.json

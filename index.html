@@ -1,0 +1,79 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Diff Visualizer</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Manrope:wght@400;500;700;800&display=swap" rel="stylesheet">
+</head>
+
+<body>
+    <div class="bg-orb orb-a" aria-hidden="true"></div>
+    <div class="bg-orb orb-b" aria-hidden="true"></div>
+    <div class="bg-grid" aria-hidden="true"></div>
+    <main class="container">
+        <header class="hero card">
+            <p class="kicker">Concept Intelligence</p>
+            <h1>Compare Any Two Ideas with Clarity</h1>
+            <p>See what is unique and what truly separates two concepts in seconds.</p>
+            <div class="hero-pills">
+                <span>Instant contrast mapping</span>
+                <span>Difference-focused analysis</span>
+                <span>Structured insights</span>
+            </div>
+        </header>
+
+        <section class="input-section card">
+            <h2>1. Enter Concepts</h2>
+            <p class="section-copy">Use specific terms for sharper results.</p>
+            <div class="row">
+                <div class="input-group field">
+                    <label for="word1">First concept</label>
+                    <input type="text" id="word1" placeholder="">
+                </div>
+                <div class="vs-badge">VS</div>
+                <div class="input-group field">
+                    <label for="word2">Second concept</label>
+                    <input type="text" id="word2" placeholder="">
+                </div>
+            </div>
+            <button id="compare-btn" class="primary-btn">
+                <span class="btn-text">Find Differences</span>
+                <span class="loader hidden"></span>
+            </button>
+            <div id="error-message" class="error-msg hidden"></div>
+        </section>
+
+        <section id="results-section" class="results-section hidden">
+            <div class="venn-container card">
+                <h2>Visual Comparison</h2>
+                <div class="venn-diagram">
+                    <div class="circle circle-left">
+                        <h3 id="venn-word1-title">Word 1</h3>
+                        <ul id="venn-word1-unique" class="venn-list"></ul>
+                    </div>
+                    <div class="circle circle-right">
+                        <h3 id="venn-word2-title">Word 2</h3>
+                        <ul id="venn-word2-unique" class="venn-list"></ul>
+                    </div>
+                </div>
+            </div>
+
+            <div class="differences-container card">
+                <h2>Key Differences</h2>
+                <div id="differences-list" class="diff-grid">
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <script src="app.js"></script>
+</body>
+
+</html>
+
+
