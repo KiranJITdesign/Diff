@@ -1,4 +1,4 @@
-﻿document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', () => {
     const compareBtn = document.getElementById('compare-btn');
     const word1Input = document.getElementById('word1');
     const word2Input = document.getElementById('word2');
@@ -7,54 +7,41 @@
 
     const vennWord1Title = document.getElementById('venn-word1-title');
     const vennWord2Title = document.getElementById('venn-word2-title');
-
     const vennWord1Unique = document.getElementById('venn-word1-unique');
     const vennWord2Unique = document.getElementById('venn-word2-unique');
-
     const differencesList = document.getElementById('differences-list');
     const btnText = document.querySelector('.btn-text');
     const loader = document.querySelector('.loader');
-    const fallbackApiUrls = ['http://localhost:3000/api/compare', 'http://127.0.0.1:3000/api/compare'];
-    const apiCandidates = (() => {
-        if (window.location.protocol === 'file:') {
-            return fallbackApiUrls;
-        }
 
-        const sameOriginApi = `${window.location.origin}/api/compare`;
-        const isLocal3000 = window.location.hostname === 'localhost' && window.location.port === '3000';
-
-        if (isLocal3000) {
-            return [sameOriginApi];
-        }
-
-        // When UI is served by another dev server (e.g. Live Server), try Node backend first.
-        return [...new Set([...fallbackApiUrls, sameOriginApi])];
-    })();
+    const geminiEndpoint = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
 
     compareBtn.addEventListener('click', async () => {
-        const w1 = word1Input.value.trim();
-        const w2 = word2Input.value.trim();
+        const word1 = word1Input.value.trim();
+        const word2 = word2Input.value.trim();
+        const apiKey = String(window.APP_CONFIG?.GEMINI_API_KEY || '').trim();
 
-        if (!w1 || !w2) {
-            showError("Please enter two words, concepts, or items to compare.");
+        if (!word1 || !word2) {
+            showError('Please enter two words, concepts, or items to compare.');
             return;
         }
 
-        if (w1.toLowerCase() === w2.toLowerCase()) {
-            showError("Please enter two different concepts to compare.");
+        if (word1.toLowerCase() === word2.toLowerCase()) {
+            showError('Please enter two different concepts to compare.');
             return;
         }
 
+        if (!apiKey) {
+            showError('Missing Gemini API key. Add GEMINI_API_KEY in .env and run `node generate-config.js`.');
+            return;
+        }
         hideError();
         setLoading(true);
         resultsSection.classList.add('hidden');
 
         try {
-            const resultData = await fetchDifferences(w1, w2);
-            renderResults(w1, w2, resultData);
+            const resultData = await fetchDifferences(word1, word2, apiKey);
+            renderResults(word1, word2, resultData);
             resultsSection.classList.remove('hidden');
-
-            // Scroll to results
             resultsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
         } catch (error) {
             showError(`Error: ${error.message}`);
@@ -63,58 +50,75 @@
         }
     });
 
-    async function fetchDifferences(w1, w2) {
-        let lastNetworkError = null;
-        let lastHttpError = null;
+    async function fetchDifferences(word1, word2, apiKey) {
+        const prompt = `
+Analyze the differences between "${word1}" and "${word2}".
+Provide the output STRICTLY in this JSON shape without markdown or extra text:
+{
+  "differences": [
+    {"title": "[short aspect name]", "description": "[how ${word1} and ${word2} differ in this aspect]"}
+  ],
+  "word1Unique": [
+    "[short bullet point unique trait of ${word1}]"
+  ],
+  "word2Unique": [
+    "[short bullet point unique trait of ${word2}]"
+  ]
+}
+Rules:
+- Provide 4 to 6 total "differences" items.
+- Provide exactly 3 items for "word1Unique" and exactly 3 items for "word2Unique".
+- Return valid JSON only.
+        `.trim();
 
-        for (const apiUrl of apiCandidates) {
-            try {
-                const response = await fetch(apiUrl, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        word1: w1,
-                        word2: w2
-                    })
-                });
-
-                const payload = await parseJsonSafe(response);
-
-                if (!response.ok) {
-                    // Keep trying other candidate backends if this server doesn't expose POST /api/compare.
-                    if (response.status === 404 || response.status === 405) {
-                        lastHttpError = new Error(`Request failed with status ${response.status}.`);
-                        continue;
+        let response;
+        try {
+            response = await fetch(`${geminiEndpoint}?key=${encodeURIComponent(apiKey)}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    contents: [
+                        {
+                            parts: [{ text: prompt }]
+                        }
+                    ],
+                    generationConfig: {
+                        temperature: 0.2
                     }
-
-                    throw new Error(payload.error || `Request failed with status ${response.status}.`);
-                }
-
-                if (!payload || typeof payload !== 'object') {
-                    throw new Error("Server returned an empty or invalid response.");
-                }
-
-                return payload;
-            } catch (error) {
-                if (error instanceof TypeError) {
-                    lastNetworkError = error;
-                    continue;
-                }
-                throw error;
-            }
+                })
+            });
+        } catch {
+            throw new Error('Network request failed. Open this app through a local static server and check your internet connection.');
         }
 
-        if (lastNetworkError) {
-            throw new Error("Could not reach backend server. Run `npm start` and open `http://localhost:3000`.");
+        const payload = await parseJsonSafe(response);
+        if (!response.ok) {
+            const errorMessage = payload?.error?.message || `Request failed with status ${response.status}.`;
+            throw new Error(errorMessage);
         }
 
-        if (lastHttpError) {
-            throw lastHttpError;
+        const modelText = payload?.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (!modelText) {
+            throw new Error('Gemini returned an empty response.');
         }
 
-        throw new Error("Request failed.");
+        const cleaned = modelText
+            .replace(/^```json\s*/i, '')
+            .replace(/^```\s*/i, '')
+            .replace(/\s*```$/, '')
+            .trim();
+
+        let parsed;
+        try {
+            parsed = JSON.parse(cleaned);
+        } catch {
+            throw new Error('Gemini returned invalid JSON. Try again.');
+        }
+
+        validateResultShape(parsed);
+        return normalizeResult(parsed, word1, word2);
     }
 
     async function parseJsonSafe(response) {
@@ -126,50 +130,106 @@
         try {
             return JSON.parse(raw);
         } catch {
-            return { error: "Received a non-JSON response from the server." };
+            return {};
         }
     }
 
-    function renderResults(w1, w2, data) {
-        // Venn Titles
-        vennWord1Title.textContent = w1;
-        vennWord2Title.textContent = w2;
+    function validateResultShape(data) {
+        if (!data || typeof data !== 'object') {
+            throw new Error('Invalid comparison response.');
+        }
 
-        // Render Venn Lists
+        if (!Array.isArray(data.differences)) {
+            throw new Error('Missing "differences" in response.');
+        }
+
+        if (!Array.isArray(data.word1Unique) || !Array.isArray(data.word2Unique)) {
+            throw new Error('Missing unique traits in response.');
+        }
+    }
+
+    function normalizeResult(data, word1, word2) {
+        const normalizeText = (value) => String(value || '').trim();
+
+        const differences = (Array.isArray(data.differences) ? data.differences : [])
+            .map((item) => ({
+                title: normalizeText(item?.title),
+                description: normalizeText(item?.description)
+            }))
+            .filter((item) => item.title && item.description)
+            .slice(0, 6);
+
+        while (differences.length < 4) {
+            const count = differences.length + 1;
+            differences.push({
+                title: `Difference ${count}`,
+                description: `${word1} and ${word2} differ in focus and practical usage.`
+            });
+        }
+
+        const word1Unique = buildUniqueList(data.word1Unique, `${word1} has a distinct identity.`);
+        const word2Unique = buildUniqueList(data.word2Unique, `${word2} has a distinct identity.`);
+
+        return { differences, word1Unique, word2Unique };
+    }
+
+    function buildUniqueList(items, fallbackText) {
+        const normalized = (Array.isArray(items) ? items : [])
+            .map((item) => String(item || '').trim())
+            .filter(Boolean)
+            .slice(0, 3);
+
+        while (normalized.length < 3) {
+            normalized.push(fallbackText);
+        }
+
+        return normalized;
+    }
+
+    function renderResults(word1, word2, data) {
+        vennWord1Title.textContent = word1;
+        vennWord2Title.textContent = word2;
         renderList(vennWord1Unique, data.word1Unique);
         renderList(vennWord2Unique, data.word2Unique);
 
-        // Render Differences Grid
         differencesList.innerHTML = '';
-        if (data.differences && Array.isArray(data.differences)) {
-            data.differences.forEach((diff, index) => {
-                const card = document.createElement('div');
-                card.className = 'diff-card';
-                card.style.animation = `fadeInUp 0.5s ease forwards ${index * 0.1}s`;
-                card.style.opacity = '0';
-
-                card.innerHTML = `
-                    <h4>${diff.title}</h4>
-                    <p>${diff.description}</p>
-                `;
-                differencesList.appendChild(card);
-            });
-        }
+        data.differences.forEach((diff, index) => {
+            const card = document.createElement('div');
+            card.className = 'diff-card';
+            card.style.animation = `fadeInUp 0.5s ease forwards ${index * 0.1}s`;
+            card.style.opacity = '0';
+            card.innerHTML = `
+                <h4>${escapeHtml(diff.title || 'Difference')}</h4>
+                <p>${escapeHtml(diff.description || '')}</p>
+            `;
+            differencesList.appendChild(card);
+        });
     }
 
     function renderList(container, items) {
         container.innerHTML = '';
-        if (items && Array.isArray(items)) {
-            items.forEach(item => {
-                const li = document.createElement('li');
-                li.textContent = item;
-                container.appendChild(li);
-            });
+        if (!Array.isArray(items)) {
+            return;
         }
+
+        items.forEach((item) => {
+            const li = document.createElement('li');
+            li.textContent = item;
+            container.appendChild(li);
+        });
     }
 
-    function showError(msg) {
-        errorMsg.textContent = msg;
+    function escapeHtml(value) {
+        return String(value)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    function showError(message) {
+        errorMsg.textContent = message;
         errorMsg.classList.remove('hidden');
     }
 
@@ -182,11 +242,11 @@
             btnText.classList.add('hidden');
             loader.classList.remove('hidden');
             compareBtn.disabled = true;
-        } else {
-            btnText.classList.remove('hidden');
-            loader.classList.add('hidden');
-            compareBtn.disabled = false;
+            return;
         }
+
+        btnText.classList.remove('hidden');
+        loader.classList.add('hidden');
+        compareBtn.disabled = false;
     }
 });
-

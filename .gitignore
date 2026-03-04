@@ -1,5 +1,4 @@
-.env
 node_modules
 anaconda
-package-lock.json
-package.json
+.env
+config.js
