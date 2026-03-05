@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
-    const apiKeyPromise = loadGeminiApiKey();
+    const apiKeyPromise = loadGroqApiKey();
     const compareBtn = document.getElementById('compare-btn');
     const word1Input = document.getElementById('word1');
     const word2Input = document.getElementById('word2');
@@ -14,7 +14,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const btnText = document.querySelector('.btn-text');
     const loader = document.querySelector('.loader');
 
-    const geminiEndpoint = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
+    const groqEndpoint = 'https://api.groq.com/openai/v1/chat/completions';
 
     compareBtn.addEventListener('click', async () => {
         const word1 = word1Input.value.trim();
@@ -32,7 +32,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         if (!apiKey) {
-            showError('Missing Gemini API key. Add FRONTEND_GEMINI_API_KEY (or GEMINI_API_KEY) to .env.');
+            showError('Missing Groq API key. Add FRONTEND_GROQ_API_KEY to config.js (or GROQ_API_KEY in .env).');
             return;
         }
         hideError();
@@ -74,20 +74,25 @@ Rules:
 
         let response;
         try {
-            response = await fetch(`${geminiEndpoint}?key=${encodeURIComponent(apiKey)}`, {
+            response = await fetch(groqEndpoint, {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json'
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${apiKey}`
                 },
                 body: JSON.stringify({
-                    contents: [
+                    model: 'llama-3.1-8b-instant',
+                    temperature: 0.2,
+                    messages: [
                         {
-                            parts: [{ text: prompt }]
+                            role: 'system',
+                            content: 'You are a precise comparison assistant. Return valid JSON only with no markdown.'
+                        },
+                        {
+                            role: 'user',
+                            content: prompt
                         }
-                    ],
-                    generationConfig: {
-                        temperature: 0.2
-                    }
+                    ]
                 })
             });
         } catch {
@@ -100,9 +105,9 @@ Rules:
             throw new Error(errorMessage);
         }
 
-        const modelText = payload?.candidates?.[0]?.content?.parts?.[0]?.text;
+        const modelText = payload?.choices?.[0]?.message?.content;
         if (!modelText) {
-            throw new Error('Gemini returned an empty response.');
+            throw new Error('Groq returned an empty response.');
         }
 
         const cleaned = modelText
@@ -115,7 +120,7 @@ Rules:
         try {
             parsed = JSON.parse(cleaned);
         } catch {
-            throw new Error('Gemini returned invalid JSON. Try again.');
+            throw new Error('Groq returned invalid JSON. Try again.');
         }
 
         validateResultShape(parsed);
@@ -251,8 +256,10 @@ Rules:
         compareBtn.disabled = false;
     }
 
-    async function loadGeminiApiKey() {
+    async function loadGroqApiKey() {
         const globalKey = pickFirstNonEmpty([
+            window.FRONTEND_GROQ_API_KEY,
+            window.GROQ_API_KEY,
             window.FRONTEND_GEMINI_API_KEY,
             window.GEMINI_API_KEY
         ]);
@@ -268,7 +275,12 @@ Rules:
             }
 
             const envText = await response.text();
-            return readEnvValue(envText, ['FRONTEND_GEMINI_API_KEY', 'GEMINI_API_KEY']);
+            return readEnvValue(envText, [
+                'FRONTEND_GROQ_API_KEY',
+                'GROQ_API_KEY',
+                'FRONTEND_GEMINI_API_KEY',
+                'GEMINI_API_KEY'
+            ]);
         } catch {
             return '';
         }
