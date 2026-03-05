@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
-    const FRONTEND_GEMINI_API_KEY = 'AIzaSyB1OWwuWFtxnQ-Cpv2nZxoWWsX3137tDE8';
+    const apiKeyPromise = loadGeminiApiKey();
     const compareBtn = document.getElementById('compare-btn');
     const word1Input = document.getElementById('word1');
     const word2Input = document.getElementById('word2');
@@ -19,7 +19,7 @@ document.addEventListener('DOMContentLoaded', () => {
     compareBtn.addEventListener('click', async () => {
         const word1 = word1Input.value.trim();
         const word2 = word2Input.value.trim();
-        const apiKey = FRONTEND_GEMINI_API_KEY.trim();
+        const apiKey = (await apiKeyPromise).trim();
 
         if (!word1 || !word2) {
             showError('Please enter two words, concepts, or items to compare.');
@@ -32,7 +32,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         if (!apiKey) {
-            showError('Missing Gemini API key. Add it to FRONTEND_GEMINI_API_KEY in app.js.');
+            showError('Missing Gemini API key. Add FRONTEND_GEMINI_API_KEY (or GEMINI_API_KEY) to .env.');
             return;
         }
         hideError();
@@ -249,5 +249,72 @@ Rules:
         btnText.classList.remove('hidden');
         loader.classList.add('hidden');
         compareBtn.disabled = false;
+    }
+
+    async function loadGeminiApiKey() {
+        const globalKey = pickFirstNonEmpty([
+            window.FRONTEND_GEMINI_API_KEY,
+            window.GEMINI_API_KEY
+        ]);
+
+        if (globalKey) {
+            return globalKey;
+        }
+
+        try {
+            const response = await fetch('.env', { cache: 'no-store' });
+            if (!response.ok) {
+                return '';
+            }
+
+            const envText = await response.text();
+            return readEnvValue(envText, ['FRONTEND_GEMINI_API_KEY', 'GEMINI_API_KEY']);
+        } catch {
+            return '';
+        }
+    }
+
+    function readEnvValue(content, keys) {
+        const lines = String(content || '')
+            .split(/\r?\n/)
+            .map((line) => line.trim())
+            .filter((line) => line && !line.startsWith('#'));
+
+        for (const key of keys) {
+            const prefix = `${key}=`;
+            const match = lines.find((line) => line.startsWith(prefix));
+            if (!match) {
+                continue;
+            }
+
+            const value = match.slice(prefix.length).trim();
+            if (value) {
+                return stripWrappingQuotes(value);
+            }
+        }
+
+        return '';
+    }
+
+    function stripWrappingQuotes(value) {
+        if (
+            (value.startsWith('"') && value.endsWith('"')) ||
+            (value.startsWith("'") && value.endsWith("'"))
+        ) {
+            return value.slice(1, -1);
+        }
+
+        return value;
+    }
+
+    function pickFirstNonEmpty(values) {
+        for (const value of values) {
+            const normalized = String(value || '').trim();
+            if (normalized) {
+                return normalized;
+            }
+        }
+
+        return '';
     }
 });
