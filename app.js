@@ -31,10 +31,6 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        if (!apiKey) {
-            showError('Missing Groq API key. Add FRONTEND_GROQ_API_KEY to config.js (or GROQ_API_KEY in .env).');
-            return;
-        }
         hideError();
         setLoading(true);
         resultsSection.classList.add('hidden');
@@ -72,6 +68,32 @@ Rules:
 - Return valid JSON only.
         `.trim();
 
+        const modelText = apiKey
+            ? await requestGroqDirect(prompt, apiKey)
+            : await requestGroqViaNetlify(prompt);
+
+        if (!modelText) {
+            throw new Error('Groq returned an empty response.');
+        }
+
+        const cleaned = modelText
+            .replace(/^```json\s*/i, '')
+            .replace(/^```\s*/i, '')
+            .replace(/\s*```$/, '')
+            .trim();
+
+        let parsed;
+        try {
+            parsed = JSON.parse(cleaned);
+        } catch {
+            throw new Error('Groq returned invalid JSON. Try again.');
+        }
+
+        validateResultShape(parsed);
+        return normalizeResult(parsed, word1, word2);
+    }
+
+    async function requestGroqDirect(prompt, apiKey) {
         let response;
         try {
             response = await fetch(groqEndpoint, {
@@ -105,26 +127,33 @@ Rules:
             throw new Error(errorMessage);
         }
 
-        const modelText = payload?.choices?.[0]?.message?.content;
-        if (!modelText) {
-            throw new Error('Groq returned an empty response.');
-        }
+        return payload?.choices?.[0]?.message?.content || '';
+    }
 
-        const cleaned = modelText
-            .replace(/^```json\s*/i, '')
-            .replace(/^```\s*/i, '')
-            .replace(/\s*```$/, '')
-            .trim();
-
-        let parsed;
+    async function requestGroqViaNetlify(prompt) {
+        let response;
         try {
-            parsed = JSON.parse(cleaned);
+            response = await fetch('/.netlify/functions/compare', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ prompt })
+            });
         } catch {
-            throw new Error('Groq returned invalid JSON. Try again.');
+            throw new Error('Cannot reach Netlify Function. Set GROQ_API_KEY in Netlify site environment variables.');
         }
 
-        validateResultShape(parsed);
-        return normalizeResult(parsed, word1, word2);
+        const payload = await parseJsonSafe(response);
+        if (!response.ok) {
+            const errorMessage =
+                payload?.error?.message ||
+                payload?.error ||
+                'Netlify Function failed. Set GROQ_API_KEY in Netlify site environment variables.';
+            throw new Error(errorMessage);
+        }
+
+        return String(payload?.text || '').trim();
     }
 
     async function parseJsonSafe(response) {
